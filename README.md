@@ -16,7 +16,7 @@ Entries from CISA KEV are always treated as CRITICAL since they represent confir
 
 1. Polls all enabled sources on a configurable interval (default: 5 minutes)
 2. De-duplicates across sources — if the same CVE appears in NVD and KEV, the KEV data takes priority
-3. Filters by your configured minimum severity (default: HIGH and above)
+3. Filters NVD results to only CVEs with active exploitation signals: description keywords like "exploited in the wild," references tagged as `Exploit` by NVD analysts, or CISA flags. This is controlled by `ZERO_DAY_ONLY` (default: on). Turn it off to receive all new CVEs above your severity threshold, but expect noise
 4. Sends a formatted HTML email for any CVE it hasn't seen before
 5. Tracks everything in a local SQLite database so it never alerts twice on the same CVE
 
@@ -48,6 +48,9 @@ If using Gmail, you'll need an App Password (not your regular password):
 ## Usage
 
 ```bash
+# First run — ingest current state so existing CVEs don't flood your inbox
+python main.py --seed
+
 # Single check — fetch feeds, alert on new CVEs, exit
 python main.py
 
@@ -102,6 +105,8 @@ All configuration is via environment variables (or `.env` file):
 | `EMAIL_FROM` | — | Sender address |
 | `EMAIL_TO` | — | Comma-separated recipient addresses |
 | `MIN_SEVERITY` | `HIGH` | Minimum severity to alert on: `CRITICAL`, `HIGH`, `MEDIUM`, `LOW` |
+| `ZERO_DAY_ONLY` | `true` | Filter NVD to only CVEs with active exploitation signals |
+| `NVD_LOOKBACK_HOURS` | `4` | How far back NVD queries look (covers downtime) |
 | `ENABLE_NVD` | `true` | Enable NVD source |
 | `ENABLE_CISA_KEV` | `true` | Enable CISA KEV source |
 | `ENABLE_GITHUB_ADVISORIES` | `true` | Enable GitHub Advisories source |

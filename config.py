@@ -37,6 +37,15 @@ class Config:
     enable_cisa_kev: bool = os.getenv("ENABLE_CISA_KEV", "true").lower() == "true"
     enable_github_advisories: bool = os.getenv("ENABLE_GITHUB_ADVISORIES", "true").lower() == "true"
 
+    # When true, NVD results are filtered to only CVEs with active exploitation
+    # signals (description mentions "exploited in the wild", references tagged
+    # as Exploit, CISA flags, etc.). When false, all new CVEs above min_severity
+    # are included — much noisier.
+    zero_day_only: bool = os.getenv("ZERO_DAY_ONLY", "true").lower() == "true"
+
+    # How far back NVD queries look (in hours). Covers daemon restarts / downtime.
+    nvd_lookback_hours: int = int(os.getenv("NVD_LOOKBACK_HOURS", "4"))
+
     # NVD API key (optional, raises rate limit from 5/30s to 50/30s)
     nvd_api_key: str = os.getenv("NVD_API_KEY", "")
 

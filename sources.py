@@ -28,6 +28,47 @@ logger = logging.getLogger("zeroday.sources")
 
 TIMEOUT = 30  # seconds
 
+# Phrases in NVD descriptions that indicate active exploitation or zero-day status.
+_EXPLOIT_PHRASES = [
+    "exploited in the wild",
+    "actively exploited",
+    "active exploitation",
+    "zero-day",
+    "zero day",
+    "0-day",
+    "0day",
+    "known to be exploited",
+    "exploitation has been",
+    "exploitation was observed",
+    "exploit exists",
+    "being exploited",
+    "has been exploited",
+    "under active attack",
+]
+
+
+def _has_exploitation_signal(cve: dict) -> bool:
+    """Check whether an NVD CVE entry shows signs of active exploitation."""
+
+    # 1. CISA has flagged it (cisaExploitAdd date present)
+    if cve.get("cisaExploitAdd"):
+        return True
+
+    # 2. Description contains exploitation language
+    descriptions = cve.get("descriptions", [])
+    desc_text = " ".join(d.get("value", "") for d in descriptions).lower()
+    for phrase in _EXPLOIT_PHRASES:
+        if phrase in desc_text:
+            return True
+
+    # 3. References tagged as "Exploit" by NVD analysts
+    for ref in cve.get("references", []):
+        tags = ref.get("tags", [])
+        if "Exploit" in tags:
+            return True
+
+    return False
+
 
 # ---------------------------------------------------------------------------
 # NVD (National Vulnerability Database) — api.nvd.nist.gov/rest/json/cves/2.0
@@ -72,38 +113,49 @@ def _nvd_affected(configurations: list) -> str:
 
 
 def fetch_nvd(config: Config) -> list[dict]:
-    """Fetch recently published CVEs from NVD (last 2 hours window)."""
+    """Fetch recently published/modified CVEs from NVD."""
     now = datetime.now(timezone.utc)
-    start = (now - timedelta(hours=2)).strftime("%Y-%m-%dT%H:%M:%S.000")
+    start = (now - timedelta(hours=config.nvd_lookback_hours)).strftime(
+        "%Y-%m-%dT%H:%M:%S.000"
+    )
     end = now.strftime("%Y-%m-%dT%H:%M:%S.000")
 
     headers = {}
     if config.nvd_api_key:
         headers["apiKey"] = config.nvd_api_key
 
-    params = {
-        "pubStartDate": start,
-        "pubEndDate": end,
-        "resultsPerPage": 200,
-    }
+    # Query both newly published AND recently modified CVEs.
+    # Modified catches cases where exploitation info is added after publication.
+    all_items = []
+    for date_type in ("pub", "lastMod"):
+        params = {
+            f"{date_type}StartDate": start,
+            f"{date_type}EndDate": end,
+            "resultsPerPage": 200,
+        }
+        try:
+            resp = requests.get(
+                "https://services.nvd.nist.gov/rest/json/cves/2.0",
+                params=params, headers=headers, timeout=TIMEOUT,
+            )
+            resp.raise_for_status()
+            all_items.extend(resp.json().get("vulnerabilities", []))
+        except requests.RequestException as exc:
+            logger.error("NVD fetch (%s) failed: %s", date_type, exc)
 
-    try:
-        resp = requests.get(
-            "https://services.nvd.nist.gov/rest/json/cves/2.0",
-            params=params, headers=headers, timeout=TIMEOUT,
-        )
-        resp.raise_for_status()
-    except requests.RequestException as exc:
-        logger.error("NVD fetch failed: %s", exc)
-        return []
-
-    data = resp.json()
+    # De-dup by CVE ID within this batch
+    seen_ids = set()
     results = []
 
-    for item in data.get("vulnerabilities", []):
+    for item in all_items:
         cve = item.get("cve", {})
         cve_id = cve.get("id", "")
-        if not cve_id:
+        if not cve_id or cve_id in seen_ids:
+            continue
+        seen_ids.add(cve_id)
+
+        # Zero-day filter: skip CVEs without exploitation signals when enabled
+        if config.zero_day_only and not _has_exploitation_signal(cve):
             continue
 
         descriptions = cve.get("descriptions", [])
@@ -132,10 +184,10 @@ def fetch_nvd(config: Config) -> list[dict]:
             "references": refs,
             "affected": affected,
             "cvss_score": cvss_score,
-            "kev": False,
+            "kev": bool(cve.get("cisaExploitAdd")),
         })
 
-    logger.info("NVD returned %d CVEs", len(results))
+    logger.info("NVD returned %d CVEs (zero_day_only=%s)", len(results), config.zero_day_only)
     return results
 
 

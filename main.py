@@ -4,6 +4,7 @@ zero-day-alerts — Monitor vulnerability feeds and send email alerts for new CV
 
 Usage:
     python main.py              Run once (check feeds, alert, exit)
+    python main.py --seed       Ingest current state without alerting (run first!)
     python main.py --daemon     Run continuously on a polling interval
     python main.py --stats      Print tracker stats and exit
     python main.py --test-email Send a test alert email and exit
@@ -120,11 +121,32 @@ def send_test_email(config: Config):
         print("❌ Test email failed — check logs and SMTP settings")
 
 
+def seed_database(config: Config, storage: Storage):
+    """Ingest all current entries into the database WITHOUT sending alerts.
+    Run this once before starting the daemon so existing CVEs don't
+    trigger a flood of emails on first real run."""
+    logger.info("Seeding database — ingesting current state without alerting...")
+    entries = fetch_all(config)
+
+    count = 0
+    for entry in entries:
+        if not storage.is_seen(entry["cve_id"]):
+            storage.mark_seen(
+                entry["cve_id"], entry["severity"], entry["source"],
+                entry["summary"], entry["published"],
+            )
+            count += 1
+
+    logger.info("Seeded %d entries (%d were already tracked)", count, len(entries) - count)
+    print(f"✅ Seeded {count} entries into {config.db_path}")
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Zero-day vulnerability alert system",
     )
     parser.add_argument("--daemon", action="store_true", help="Run as a continuous daemon")
+    parser.add_argument("--seed", action="store_true", help="Ingest current state without alerting (run once before first real use)")
     parser.add_argument("--stats", action="store_true", help="Print tracker stats")
     parser.add_argument("--test-email", action="store_true", help="Send a test alert email")
     args = parser.parse_args()
@@ -138,6 +160,8 @@ def main():
             print(json.dumps(storage.stats(), indent=2))
         elif args.test_email:
             send_test_email(config)
+        elif args.seed:
+            seed_database(config, storage)
         elif args.daemon:
             daemon_loop(config, storage)
         else:
