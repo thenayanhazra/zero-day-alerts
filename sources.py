@@ -348,17 +348,27 @@ def merge_entries(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
             current["affected"] = entry["affected"]
         current_published = _parse_iso(current.get("published"))
         entry_published = _parse_iso(entry.get("published"))
-        if current_published and entry_published and entry_published < current_published:
+        if current_published is None and entry_published is not None:
+            current["published"] = entry["published"]
+        elif current_published and entry_published and entry_published < current_published:
             current["published"] = entry["published"]
     return list(merged.values())
+
+
+def _run_source(name: str, fetcher: Any, config: Config, storage: Storage) -> list[dict[str, Any]]:
+    try:
+        return fetcher(config, storage)
+    except Exception:
+        logger.exception("%s fetch failed with unexpected error", name)
+        return []
 
 
 def fetch_all(config: Config, storage: Storage) -> list[dict[str, Any]]:
     entries: list[dict[str, Any]] = []
     if config.enable_nvd:
-        entries.extend(fetch_nvd(config, storage))
+        entries.extend(_run_source("NVD", fetch_nvd, config, storage))
     if config.enable_cisa_kev:
-        entries.extend(fetch_cisa_kev(config, storage))
+        entries.extend(_run_source("CISA-KEV", fetch_cisa_kev, config, storage))
     if config.enable_github_advisories:
-        entries.extend(fetch_github_advisories(config, storage))
+        entries.extend(_run_source("GitHub-Advisory", fetch_github_advisories, config, storage))
     return merge_entries(entries)
