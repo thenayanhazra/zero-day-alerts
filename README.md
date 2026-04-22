@@ -62,26 +62,5 @@ Use `.env.example` as your template. Most deployments only need to adjust:
 - `notifier.py` — SMTP client and email rendering
 - `tests/` — regression tests for core source behavior
 
-## Practical capabilities worth adding next (without bloat)
-
-These keep the project focused while improving real-world utility:
-
-1. **Per-feed health signals**  
-   Track last successful poll time and surface stale-source warnings in `--stats`.
-
-2. **Digest mode (optional)**  
-   Add hourly/daily summary emails to reduce alert fatigue while preserving immediate mode.
-
-3. **Simple suppression rules**  
-   Ignore known-noise vendors/products/CVEs via config file patterns.
-
-4. **Slack or webhook notifier**  
-   Add one alternative notification channel behind the same alert interface.
-
-5. **Minimal metrics endpoint**  
-   Expose counters (poll success/fail, alerts sent/failed) for Prometheus scraping.
-
-6. **Container healthcheck command**  
-   Add a CLI subcommand that returns non-zero when sources are stale or DB is unhealthy.
 
 None of these require changing the core architecture; they extend observability and control while preserving the project’s lightweight design.
