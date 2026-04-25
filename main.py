@@ -10,7 +10,7 @@ import sys
 import time
 
 from config import Config, passes_severity_filter
-from notifier import send_alert
+from notifier import notify
 from sources import fetch_all
 from storage import Storage
 
@@ -29,10 +29,6 @@ def _handle_signal(signum, frame) -> None:  # noqa: ANN001,ARG001
     _shutdown = True
 
 
-def should_alert(entry: dict, config: Config) -> bool:
-    return passes_severity_filter(entry.get("severity", "MEDIUM"), config.min_severity)
-
-
 def run_once(config: Config, storage: Storage) -> int:
     logger.info("Fetching vulnerability feeds")
     entries = fetch_all(config, storage)
@@ -40,7 +36,7 @@ def run_once(config: Config, storage: Storage) -> int:
 
     candidates: list[dict] = []
     for entry in entries:
-        if not should_alert(entry, config):
+        if not passes_severity_filter(entry.get("severity", "MEDIUM"), config.min_severity):
             if not storage.has_record(entry["cve_id"]):
                 storage.upsert_alert({**entry, "summary": entry.get("summary", "")[:500]})
                 storage.mark_alert_sent([entry["cve_id"]], recipients=[])
@@ -59,13 +55,14 @@ def run_once(config: Config, storage: Storage) -> int:
         return 0
 
     logger.info("%d pending vulnerabilities detected", len(pending_entries))
-    success = send_alert(config, pending_entries)
+    success = notify(config, pending_entries)
     cve_ids = [entry["cve_id"] for entry in pending_entries]
     if success:
-        storage.mark_alert_sent(cve_ids, config.email_to)
+        all_recipients = config.email_to + config.sms_to + config.whatsapp_to
+        storage.mark_alert_sent(cve_ids, all_recipients)
         return len(pending_entries)
 
-    storage.mark_alert_failed(cve_ids, "send_alert returned False")
+    storage.mark_alert_failed(cve_ids, "notify returned False")
     return 0
 
 
@@ -89,11 +86,11 @@ def daemon_loop(config: Config, storage: Storage) -> None:
     logger.info("Daemon stopped")
 
 
-def send_test_email(config: Config) -> None:
+def send_test_notify(config: Config) -> None:
     test_entry = {
         "cve_id": "CVE-0000-0000",
         "severity": "CRITICAL",
-        "summary": "This is a test alert to verify SMTP configuration.",
+        "summary": "This is a test alert to verify notification channel configuration.",
         "published": "2026-01-01T00:00:00+00:00",
         "source": "TEST",
         "references": ["https://example.com/test-alert"],
@@ -101,8 +98,8 @@ def send_test_email(config: Config) -> None:
         "cvss_score": 10.0,
         "kev": True,
     }
-    success = send_alert(config, [test_entry])
-    print("✅ Test email sent successfully" if success else "❌ Test email failed — check logs and SMTP settings")
+    success = notify(config, [test_entry])
+    print("Test notification sent successfully" if success else "Test notification failed — check logs and channel settings")
 
 
 def seed_database(config: Config, storage: Storage) -> None:
@@ -114,7 +111,7 @@ def seed_database(config: Config, storage: Storage) -> None:
             storage.seed_record(entry)
             count += 1
     logger.info("Seeded %d entries", count)
-    print(f"✅ Seeded {count} entries into {config.db_path}")
+    print(f"Seeded {count} entries into {config.db_path}")
 
 
 def main() -> None:
@@ -122,7 +119,7 @@ def main() -> None:
     parser.add_argument("--daemon", action="store_true", help="Run as a continuous daemon")
     parser.add_argument("--seed", action="store_true", help="Ingest current state without alerting")
     parser.add_argument("--stats", action="store_true", help="Print tracker stats")
-    parser.add_argument("--test-email", action="store_true", help="Send a test alert email")
+    parser.add_argument("--test-notify", action="store_true", help="Send a test alert on all configured channels")
     args = parser.parse_args()
 
     config = Config()
@@ -130,8 +127,8 @@ def main() -> None:
     try:
         if args.stats:
             print(json.dumps(storage.stats(), indent=2))
-        elif args.test_email:
-            send_test_email(config)
+        elif args.test_notify:
+            send_test_notify(config)
         elif args.seed:
             seed_database(config, storage)
         elif args.daemon:

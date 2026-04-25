@@ -1,4 +1,4 @@
-"""Email notification delivery."""
+"""Notification delivery: email (SMTP), SMS and WhatsApp (Twilio)."""
 from __future__ import annotations
 
 import html
@@ -6,6 +6,8 @@ import logging
 import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+
+import requests
 
 from config import Config
 
@@ -18,6 +20,10 @@ SEVERITY_COLORS = {
     "LOW": "#2563eb",
 }
 
+
+# ---------------------------------------------------------------------------
+# Plain / HTML builders (shared by email and stdout fallback)
+# ---------------------------------------------------------------------------
 
 def _build_html(entries: list[dict]) -> str:
     rows = []
@@ -74,19 +80,32 @@ def _build_plain(entries: list[dict]) -> str:
     return "\n".join(lines)
 
 
-def send_alert(config: Config, entries: list[dict]) -> bool:
-    if not entries:
-        return True
-    if not config.smtp_host or not config.email_to:
-        logger.warning("SMTP not configured; printing alert to stdout")
-        print(_build_plain(entries))
-        return False
+def _build_sms(entries: list[dict]) -> str:
+    """Compact text for SMS/WhatsApp (no hard size limit but kept tight)."""
+    lines = [f"ZERO-DAY ALERT: {len(entries)} CVE{'s' if len(entries) != 1 else ''}"]
+    for entry in entries[:5]:
+        kev = " [KEV]" if entry.get("kev") else ""
+        score = f" CVSS:{entry['cvss_score']}" if entry.get("cvss_score") is not None else ""
+        lines.append(f"{entry.get('cve_id', '?')} {entry.get('severity', '?')}{score}{kev}")
+        summary = entry.get("summary", "")
+        if summary:
+            lines.append(summary[:140])
+    if len(entries) > 5:
+        lines.append(f"...and {len(entries) - 5} more")
+    return "\n".join(lines)
 
-    crit_count = sum(1 for entry in entries if entry.get("severity") == "CRITICAL")
-    if crit_count:
-        subject = f"{crit_count} CRITICAL — Zero-Day Alert ({len(entries)} total)"
-    else:
-        subject = f"Zero-Day Alert — {len(entries)} New Vulnerabilities"
+
+# ---------------------------------------------------------------------------
+# Email
+# ---------------------------------------------------------------------------
+
+def _send_email(config: Config, entries: list[dict]) -> bool:
+    crit_count = sum(1 for e in entries if e.get("severity") == "CRITICAL")
+    subject = (
+        f"{crit_count} CRITICAL — Zero-Day Alert ({len(entries)} total)"
+        if crit_count
+        else f"Zero-Day Alert — {len(entries)} New Vulnerabilities"
+    )
 
     msg = MIMEMultipart("alternative")
     msg["Subject"] = subject
@@ -96,9 +115,8 @@ def send_alert(config: Config, entries: list[dict]) -> bool:
     msg.attach(MIMEText(_build_html(entries), "html", "utf-8"))
 
     try:
-        server: smtplib.SMTP
         if config.smtp_use_ssl:
-            server = smtplib.SMTP_SSL(config.smtp_host, config.smtp_port, timeout=config.smtp_timeout)
+            server: smtplib.SMTP = smtplib.SMTP_SSL(config.smtp_host, config.smtp_port, timeout=config.smtp_timeout)
         else:
             server = smtplib.SMTP(config.smtp_host, config.smtp_port, timeout=config.smtp_timeout)
         with server:
@@ -109,8 +127,73 @@ def send_alert(config: Config, entries: list[dict]) -> bool:
             if config.smtp_user and config.smtp_password:
                 server.login(config.smtp_user, config.smtp_password)
             server.sendmail(config.email_from or config.smtp_user, config.email_to, msg.as_string())
-        logger.info("Alert email sent to %s", config.email_to)
+        logger.info("Email sent to %s", config.email_to)
         return True
     except Exception as exc:
-        logger.error("Failed to send email: %s", exc)
+        logger.error("Email delivery failed: %s", exc)
         return False
+
+
+# ---------------------------------------------------------------------------
+# Twilio (SMS + WhatsApp)
+# ---------------------------------------------------------------------------
+
+def _twilio_send(config: Config, to: str, from_: str, body: str) -> bool:
+    url = f"https://api.twilio.com/2010-04-01/Accounts/{config.twilio_account_sid}/Messages.json"
+    try:
+        resp = requests.post(
+            url,
+            data={"To": to, "From": from_, "Body": body},
+            auth=(config.twilio_account_sid, config.twilio_auth_token),
+            timeout=20,
+        )
+        resp.raise_for_status()
+        return True
+    except requests.RequestException as exc:
+        logger.error("Twilio message to %s failed: %s", to, exc)
+        return False
+
+
+def _send_sms(config: Config, entries: list[dict]) -> bool:
+    body = _build_sms(entries)
+    results = [_twilio_send(config, to, config.twilio_from, body) for to in config.sms_to]
+    if results:
+        logger.info("SMS sent to %d recipient(s)", sum(results))
+    return all(results)
+
+
+def _send_whatsapp(config: Config, entries: list[dict]) -> bool:
+    body = _build_sms(entries)
+    from_ = f"whatsapp:{config.twilio_from}"
+    results = [_twilio_send(config, f"whatsapp:{to}", from_, body) for to in config.whatsapp_to]
+    if results:
+        logger.info("WhatsApp sent to %d recipient(s)", sum(results))
+    return all(results)
+
+
+# ---------------------------------------------------------------------------
+# Main dispatch
+# ---------------------------------------------------------------------------
+
+def notify(config: Config, entries: list[dict]) -> bool:
+    """Send alerts on all configured channels. Returns True only if all succeed."""
+    if not entries:
+        return True
+
+    results: list[bool] = []
+
+    if config.smtp_host and config.email_to:
+        results.append(_send_email(config, entries))
+
+    _twilio_ready = config.twilio_account_sid and config.twilio_auth_token and config.twilio_from
+    if _twilio_ready and config.sms_to:
+        results.append(_send_sms(config, entries))
+    if _twilio_ready and config.whatsapp_to:
+        results.append(_send_whatsapp(config, entries))
+
+    if not results:
+        logger.warning("No notification channels configured; printing to stdout")
+        print(_build_plain(entries))
+        return False
+
+    return all(results)

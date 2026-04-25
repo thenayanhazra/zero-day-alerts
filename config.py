@@ -45,9 +45,19 @@ class Config:
     nvd_api_key: str = os.getenv("NVD_API_KEY", "")
     github_token: str = os.getenv("GITHUB_TOKEN", "")
 
+    twilio_account_sid: str = os.getenv("TWILIO_ACCOUNT_SID", "")
+    twilio_auth_token: str = os.getenv("TWILIO_AUTH_TOKEN", "")
+    twilio_from: str = os.getenv("TWILIO_FROM", "")
+    sms_to: list[str] = field(default_factory=list)
+    whatsapp_to: list[str] = field(default_factory=list)
+
     def __post_init__(self) -> None:
         raw = os.getenv("EMAIL_TO", "")
         self.email_to = [addr.strip() for addr in raw.split(",") if addr.strip()]
+        raw_sms = os.getenv("SMS_TO", "")
+        self.sms_to = [n.strip() for n in raw_sms.split(",") if n.strip()]
+        raw_wa = os.getenv("WHATSAPP_TO", "")
+        self.whatsapp_to = [n.strip() for n in raw_wa.split(",") if n.strip()]
         if self.min_severity not in SEVERITY_RANK:
             self.min_severity = "HIGH"
 
