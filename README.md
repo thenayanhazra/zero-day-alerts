@@ -74,3 +74,8 @@ For WhatsApp, use a Twilio-approved WhatsApp sender or the sandbox number.
 - `storage.py` — SQLite schema and state transitions
 - `notifier.py` — email, SMS, and WhatsApp delivery
 - `tests/` — regression tests for core source behavior
+
+
+## Improvement roadmap
+
+See `RECOMMENDATIONS.md` for a prioritized hardening plan and operational improvements.
