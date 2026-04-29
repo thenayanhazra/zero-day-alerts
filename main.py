@@ -1,47 +1,39 @@
-#!/usr/bin/env python3
-"""Minimal Zero-Day Alerts CLI."""
 from __future__ import annotations
 
 import argparse
 import json
-import sys
+from dataclasses import asdict
+from typing import Sequence
 
-from config import Config
-from sources import fetch_kev
+from config import SETTINGS
+from kev import fetch_catalog, parse_records, recent_records
 
 
-def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Fetch and print CISA KEV vulnerabilities")
-    parser.add_argument("--limit", type=int, default=20, help="Number of results to print (default: 20)")
-    parser.add_argument("--json", action="store_true", help="Print machine-readable JSON")
+def _build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description="Zero-Day Alerts CLI")
+    parser.add_argument("--days", type=int, default=30, help="Only show entries added in the last N days.")
+    parser.add_argument("--limit", type=int, default=25, help="Maximum number of entries to print.")
+    parser.add_argument("--json", action="store_true", help="Print JSON output.")
     return parser
 
 
-def run() -> int:
-    args = build_parser().parse_args()
-    config = Config()
-
-    try:
-        items = fetch_kev(config)
-    except Exception as exc:  # noqa: BLE001
-        print(f"Error: failed to fetch KEV feed: {exc}", file=sys.stderr)
-        return 1
-
-    if args.limit < 1:
-        print("Error: --limit must be at least 1", file=sys.stderr)
-        return 1
-
-    limited = items[: args.limit]
+def run(argv: Sequence[str] | None = None) -> int:
+    args = _build_parser().parse_args(argv)
+    catalog = fetch_catalog(SETTINGS.kev_url, SETTINGS.timeout_seconds)
+    records = parse_records(catalog)
+    filtered = sorted(recent_records(records, args.days), key=lambda record: record.date_added, reverse=True)
+    limited = filtered[: args.limit]
 
     if args.json:
-        print(json.dumps(limited, indent=2))
+        print(json.dumps([asdict(record) for record in limited], default=str, indent=2))
         return 0
 
-    print(f"Fetched {len(items)} KEV records. Showing {len(limited)}:")
-    for item in limited:
-        print(f"- {item['cve_id']} | {item['vendor']}/{item['product']} | added {item['date_added']}")
-        print(f"  {item['summary']}")
-
+    for record in limited:
+        print(f"{record.date_added} | {record.cve_id} | {record.vendor_project} {record.product}")
+        print(f"  {record.vulnerability_name}")
+        print(f"  Action: {record.required_action}")
+    if not limited:
+        print("No KEV entries matched your filter.")
     return 0
 
 
