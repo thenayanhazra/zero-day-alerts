@@ -1,4 +1,0 @@
-services:
-  app:
-    build: .
-    command: python main.py --limit 10
