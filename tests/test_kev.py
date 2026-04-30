@@ -24,14 +24,27 @@ def test_parse_records_maps_expected_fields() -> None:
     assert records[0].date_added == date(2026, 4, 20)
 
 
+def _make_vuln(cve_id: str, date_added: str) -> dict:
+    return {
+        "cveID": cve_id,
+        "vendorProject": "Vendor",
+        "product": "Product",
+        "vulnerabilityName": "Name",
+        "dateAdded": date_added,
+        "shortDescription": "desc",
+        "requiredAction": "action",
+    }
+
+
 def test_recent_records_filters_by_cutoff() -> None:
     catalog = {
         "vulnerabilities": [
-            {"cveID": "CVE-OLD", "dateAdded": "2024-01-01"},
-            {"cveID": "CVE-NEW", "dateAdded": "2099-01-01"},
+            _make_vuln("CVE-OLD", "2024-01-01"),
+            _make_vuln("CVE-NEW", "2099-01-01"),
         ]
     }
     records = parse_records(catalog)
     filtered = recent_records(records, days=30)
     cves = {record.cve_id for record in filtered}
     assert "CVE-NEW" in cves
+    assert "CVE-OLD" not in cves
