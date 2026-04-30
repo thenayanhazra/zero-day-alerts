@@ -39,6 +39,6 @@ def parse_records(catalog: dict[str, Any]) -> list[KevRecord]:
     ]
 
 
-def recent_records(records: list[KevRecord], days: int) -> list[KevRecord]:
-    cutoff = date.today() - timedelta(days=days)
+def recent_records(records: list[KevRecord], days: int, today: date | None = None) -> list[KevRecord]:
+    cutoff = (today or date.today()) - timedelta(days=days)
     return [record for record in records if record.date_added >= cutoff]

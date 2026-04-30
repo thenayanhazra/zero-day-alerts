@@ -37,14 +37,15 @@ def _make_vuln(cve_id: str, date_added: str) -> dict:
 
 
 def test_recent_records_filters_by_cutoff() -> None:
+    today = date(2026, 4, 30)
     catalog = {
         "vulnerabilities": [
-            _make_vuln("CVE-OLD", "2024-01-01"),
-            _make_vuln("CVE-NEW", "2099-01-01"),
+            _make_vuln("CVE-OLD", "2026-01-01"),   # 119 days before today — outside 30-day window
+            _make_vuln("CVE-NEW", "2026-04-25"),   # 5 days before today — inside 30-day window
         ]
     }
     records = parse_records(catalog)
-    filtered = recent_records(records, days=30)
+    filtered = recent_records(records, days=30, today=today)
     cves = {record.cve_id for record in filtered}
     assert "CVE-NEW" in cves
     assert "CVE-OLD" not in cves
