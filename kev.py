@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 from typing import Any
 
 import requests
@@ -25,20 +25,18 @@ def fetch_catalog(url: str, timeout_seconds: int) -> dict[str, Any]:
 
 
 def parse_records(catalog: dict[str, Any]) -> list[KevRecord]:
-    records: list[KevRecord] = []
-    for item in catalog.get("vulnerabilities", []):
-        records.append(
-            KevRecord(
-                cve_id=item.get("cveID", ""),
-                vendor_project=item.get("vendorProject", ""),
-                product=item.get("product", ""),
-                vulnerability_name=item.get("vulnerabilityName", ""),
-                date_added=datetime.strptime(item["dateAdded"], "%Y-%m-%d").date(),
-                short_description=item.get("shortDescription", ""),
-                required_action=item.get("requiredAction", ""),
-            )
+    return [
+        KevRecord(
+            cve_id=item.get("cveID", ""),
+            vendor_project=item.get("vendorProject", ""),
+            product=item.get("product", ""),
+            vulnerability_name=item.get("vulnerabilityName", ""),
+            date_added=date.fromisoformat(item["dateAdded"]),
+            short_description=item.get("shortDescription", ""),
+            required_action=item.get("requiredAction", ""),
         )
-    return records
+        for item in catalog.get("vulnerabilities", [])
+    ]
 
 
 def recent_records(records: list[KevRecord], days: int) -> list[KevRecord]:

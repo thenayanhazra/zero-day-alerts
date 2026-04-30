@@ -2,8 +2,11 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from dataclasses import asdict
 from typing import Sequence
+
+import requests
 
 from config import SETTINGS
 from kev import fetch_catalog, parse_records, recent_records
@@ -19,7 +22,11 @@ def _build_parser() -> argparse.ArgumentParser:
 
 def run(argv: Sequence[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
-    catalog = fetch_catalog(SETTINGS.kev_url, SETTINGS.timeout_seconds)
+    try:
+        catalog = fetch_catalog(SETTINGS.kev_url, SETTINGS.timeout_seconds)
+    except requests.exceptions.RequestException as exc:
+        print(f"error: failed to fetch KEV catalog: {exc}", file=sys.stderr)
+        return 1
     records = parse_records(catalog)
     filtered = sorted(recent_records(records, args.days), key=lambda record: record.date_added, reverse=True)
     limited = filtered[: args.limit]
