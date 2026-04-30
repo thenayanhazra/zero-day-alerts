@@ -12,10 +12,20 @@ from config import SETTINGS
 from kev import fetch_catalog, parse_records, recent_records
 
 
+def _positive_int(value: str) -> int:
+    try:
+        n = int(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"expected a positive integer, got {value!r}")
+    if n <= 0:
+        raise argparse.ArgumentTypeError(f"must be greater than 0, got {n}")
+    return n
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Zero-Day Alerts CLI")
-    parser.add_argument("--days", type=int, default=30, help="Only show entries added in the last N days.")
-    parser.add_argument("--limit", type=int, default=25, help="Maximum number of entries to print.")
+    parser.add_argument("--days", type=_positive_int, default=30, help="Only show entries added in the last N days.")
+    parser.add_argument("--limit", type=_positive_int, default=25, help="Maximum number of entries to print.")
     parser.add_argument("--json", action="store_true", help="Print JSON output.")
     return parser
 
