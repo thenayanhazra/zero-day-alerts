@@ -36,6 +36,19 @@ def _make_vuln(cve_id: str, date_added: str) -> dict:
     }
 
 
+def test_parse_records_skips_record_with_missing_date() -> None:
+    catalog = {"vulnerabilities": [{"cveID": "CVE-2026-0002", "vendorProject": "X", "product": "Y",
+                                    "vulnerabilityName": "N", "shortDescription": "d", "requiredAction": "a"}]}
+    assert parse_records(catalog) == []
+
+
+def test_parse_records_skips_record_with_bad_date_format() -> None:
+    catalog = {"vulnerabilities": [{"cveID": "CVE-2026-0003", "vendorProject": "X", "product": "Y",
+                                    "vulnerabilityName": "N", "dateAdded": "not-a-date",
+                                    "shortDescription": "d", "requiredAction": "a"}]}
+    assert parse_records(catalog) == []
+
+
 def test_recent_records_filters_by_cutoff() -> None:
     today = date(2026, 4, 30)
     catalog = {
