@@ -42,15 +42,20 @@ python main.py --days 14 --json
 **Sample output**
 
 ```
-2026-04-28 | CVE-2026-1234 | Acme Router
+YYYY-MM-DD | CVE-YYYY-0001 | Acme Router
   Acme Router Remote Code Execution Vulnerability
   Action: Apply mitigations per vendor instructions or discontinue use.
-2026-04-25 | CVE-2026-5678 | Example VPN
+YYYY-MM-DD | CVE-YYYY-0002 | Example VPN
   Example VPN Authentication Bypass Vulnerability
   Action: Apply updates per vendor instructions.
 ```
 
-Exits with code `1` and a message to stderr if the catalog cannot be fetched.
+**Exit codes**
+
+| Code | Meaning |
+|------|---------|
+| `0` | Success (including "no entries matched") |
+| `1` | Failed to fetch or parse the KEV catalog |
 
 ## Development
 
@@ -61,11 +66,11 @@ pytest
 
 ## Configuration
 
-Default settings live in `config.py`. Override by editing `Settings` directly or subclassing it:
+Override defaults via environment variables:
 
-| Setting | Default | Description |
-|---------|---------|-------------|
-| `kev_url` | CISA KEV feed URL | Source JSON feed |
-| `timeout_seconds` | `20` | HTTP request timeout |
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `KEV_URL` | CISA KEV feed URL | Source JSON feed |
+| `TIMEOUT_SECONDS` | `20` | HTTP request timeout in seconds (must be a positive integer) |
 
-A `.env.example` is included for extended alert integrations (email, SMS, NVD, GitHub Advisories).
+A `.env.example` is included for reference.

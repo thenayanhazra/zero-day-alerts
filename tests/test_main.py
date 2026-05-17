@@ -63,6 +63,18 @@ def test_limit_caps_results(capsys) -> None:
     assert len(data) == 2
 
 
+def test_invalid_json_returns_exit_1(capsys) -> None:
+    with patch("main.fetch_catalog", side_effect=ValueError("invalid JSON")):
+        assert run([]) == 1
+    assert "error:" in capsys.readouterr().err
+
+
+def test_http_error_returns_exit_1(capsys) -> None:
+    with patch("main.fetch_catalog", side_effect=requests.exceptions.HTTPError("403")):
+        assert run([]) == 1
+    assert "error:" in capsys.readouterr().err
+
+
 def test_nonpositive_days_rejected() -> None:
     with pytest.raises(SystemExit) as exc_info:
         run(["--days", "0"])

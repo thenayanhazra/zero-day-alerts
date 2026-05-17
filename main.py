@@ -34,7 +34,7 @@ def run(argv: Sequence[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
     try:
         catalog = fetch_catalog(SETTINGS.kev_url, SETTINGS.timeout_seconds)
-    except requests.exceptions.RequestException as exc:
+    except (requests.exceptions.RequestException, ValueError) as exc:
         print(f"error: failed to fetch KEV catalog: {exc}", file=sys.stderr)
         return 1
     records = parse_records(catalog)
